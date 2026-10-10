@@ -173,6 +173,22 @@ def record_approval(workflow_id: str, expected_hash: str | None = None) -> str:
     return current_hash
 
 
+def spec_hash(workflow_id: str) -> str:
+    directory, spec, state_path = workflow_paths(workflow_id)
+    reject_symlink(directory)
+    state = read_state(state_path)
+    if state["workflow_id"] != workflow_id or state.get("spec_path") != str(spec):
+        raise ForgeError("Approval state does not match this workflow.")
+    return digest(spec)
+
+
+def record_chat_approval(workflow_id: str, expected_hash: str) -> None:
+    if not re.fullmatch(r"[a-f0-9]{64}", expected_hash):
+        raise ForgeError("Expected specification hash must be a SHA-256 digest.")
+    record_approval(workflow_id, expected_hash=expected_hash)
+    print(f"Approval recorded for {workflow_id}.")
+
+
 def approve(workflow_id: str) -> None:
     _, spec, _ = workflow_paths(workflow_id)
     current_hash = digest(spec)
@@ -207,9 +223,15 @@ def main() -> int:
     init_parser = sub.add_parser("init", help="create a workflow record without overwriting")
     init_parser.add_argument("workflow_id")
     init_parser.add_argument("task")
-    for command in ("approve", "check"):
+    for command in ("approve", "check", "spec-hash"):
         command_parser = sub.add_parser(command)
         command_parser.add_argument("workflow_id")
+    record_parser = sub.add_parser(
+        "record-chat-approval",
+        help="persist approval after explicit approval in the Codex conversation",
+    )
+    record_parser.add_argument("workflow_id")
+    record_parser.add_argument("expected_hash")
     prepare_parser = sub.add_parser("prepare-approval", help="install a short project-local approval command")
     prepare_parser.add_argument("workflow_id")
     args = parser.parse_args()
@@ -220,6 +242,10 @@ def main() -> int:
             approve(args.workflow_id)
         elif args.command == "prepare-approval":
             prepare_approval(args.workflow_id)
+        elif args.command == "spec-hash":
+            print(spec_hash(args.workflow_id))
+        elif args.command == "record-chat-approval":
+            record_chat_approval(args.workflow_id, args.expected_hash)
         else:
             check(args.workflow_id)
     except (ForgeError, OSError) as exc:

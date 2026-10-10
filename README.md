@@ -17,14 +17,15 @@ $forge-spec Add JWT authentication to the Spring Boot application
 
 Codex discovers skills from plugin packages; standalone repo skills use `.agents/skills/<name>/SKILL.md`. Forge uses the plugin package format with `plugin.json`, `skills/forge-spec/SKILL.md`, and a Codex compatibility manifest. See the [Codex skill guide](https://developers.openai.com/codex/skills) and [plugin packaging guide](https://developers.openai.com/plugins/build/plugins).
 
-Forge inspects relevant repository files and creates a draft under `.forge/workflows/<workflow-id>/spec.md`. Review the full document. To approve it, run `./.forge/workflows/<workflow-id>/approve` from the repository root and type `APPROVE`. The helper displays the current digest and stores it automatically, so there is no cache path or digest to copy. Conversational approval alone does not write approval state.
+Forge inspects relevant repository files and creates a draft under `.forge/workflows/<workflow-id>/spec.md`, then asks in chat whether you approve it or want changes. Approval in chat is persisted against the exact spec digest; you do not need to run a terminal command or copy a digest. You can also use the project-local `approve` command as a terminal fallback.
 
-To refresh an existing install after changing the local source, remove the installed copy and add it again, then start a new Codex session. `marketplace upgrade` applies to Git marketplaces, not this local marketplace:
+To refresh a GitHub marketplace install after a new Forge release, run:
 
 ```sh
-codex plugin remove forge@forge-local
-codex plugin add forge@forge-local
+codex plugin marketplace upgrade forge-local
 ```
+
+For a local marketplace install, remove and add the plugin again, then start a new Codex session.
 
 ## Install from a local marketplace
 
@@ -66,7 +67,7 @@ Any later workflow stage must verify approval before relying on a spec:
 ./.forge/workflows/<workflow-id>/approve check
 ```
 
-Changing the spec invalidates its approval hash. Review the revision and run the same short approval command again.
+Changing the spec invalidates its approval hash. Review the full revision and approve it again in chat, or use the terminal fallback.
 
 ## Runtime files
 
@@ -84,7 +85,7 @@ State is written atomically with mode `0600` where Unix permissions are supporte
 
 ## Approval boundary
 
-Approval requires an interactive terminal and an exact `APPROVE` confirmation after reviewing the artifact. The digest binds the persisted record to the content. This is not an operating-system security boundary: a user or process with write access to `.forge/` can alter its state. Codex's general tool permissions remain in force.
+Approval requires an explicit user choice after reviewing the artifact. Forge stores the digest of the exact approved content. The terminal fallback requires an interactive terminal and an exact `APPROVE` confirmation. This is not an operating-system security boundary: a user or process with write access to `.forge/` can alter its state. Codex's general tool permissions remain in force.
 
 ## Validation
 
