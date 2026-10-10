@@ -19,13 +19,26 @@ Codex discovers skills from plugin packages; standalone repo skills use `.agents
 
 Forge inspects relevant repository files and creates a draft under `.forge/workflows/<workflow-id>/spec.md`, then asks in chat whether you approve it or want changes. Approval in chat is persisted against the exact spec digest; you do not need to run a terminal command or copy a digest. You can also use the project-local `approve` command as a terminal fallback.
 
-To refresh a GitHub marketplace install after a new Forge release, run:
+## Install the latest version from GitHub
+
+Add Forge's GitHub marketplace and install Forge:
+
+```sh
+codex plugin marketplace add RahulSaroha47/forge
+codex plugin add forge@forge-local
+```
+
+This installs the version on the repository's default branch. Start a new Codex session and invoke `$forge-spec`.
+
+To update an existing install to the latest version on that branch:
 
 ```sh
 codex plugin marketplace upgrade forge-local
+codex plugin remove forge@forge-local
+codex plugin add forge@forge-local
 ```
 
-For a local marketplace install, remove and add the plugin again, then start a new Codex session.
+Then start a new Codex session.
 
 ## Install from a local marketplace
 
