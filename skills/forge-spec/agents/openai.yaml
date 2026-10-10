@@ -1,0 +1,6 @@
+interface:
+  display_name: "Forge Spec"
+  short_description: "Draft and approve a repository-grounded specification"
+  default_prompt: "Use $forge-spec to create a specification for this task."
+policy:
+  allow_implicit_invocation: false

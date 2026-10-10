@@ -1,0 +1,8 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "forge",
+  "version": "0.1.1",
+  "description": "A spec-driven engineering workflow with persisted human approval.",
+  "author": {"name": "Forge contributors"},
+  "license": "MIT"
+}
