@@ -1,0 +1,6 @@
+interface:
+  display_name: "Forge Plan"
+  short_description: "Draft an approved spec into an implementation plan"
+  default_prompt: "Use $forge-plan to plan an approved specification."
+policy:
+  allow_implicit_invocation: false

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persist and verify human approval for Forge specification artifacts."""
+"""Persist and verify human approval for Forge specification and plan artifacts."""
 
 from __future__ import annotations
 
@@ -35,11 +35,15 @@ def reject_symlink(path: Path) -> None:
             raise ForgeError(f"Refusing to use symlink: {candidate}")
 
 
-def digest(path: Path) -> str:
+def artifact_digest(path: Path, artifact: str) -> str:
     reject_symlink(path)
     if not path.is_file():
-        raise ForgeError(f"Specification is missing: {path}")
+        raise ForgeError(f"{artifact} is missing: {path}")
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def digest(path: Path) -> str:
+    return artifact_digest(path, "Specification")
 
 
 def read_state(path: Path) -> dict:
@@ -125,6 +129,7 @@ def init(workflow_id: str, task: str) -> None:
         "stage": "specification_draft",
         "spec_path": str(spec),
         "approval": None,
+        "plan_approval": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
@@ -203,7 +208,7 @@ def approve(workflow_id: str) -> None:
     print(f"Approval recorded for {workflow_id}.")
 
 
-def check(workflow_id: str) -> None:
+def validated_spec(workflow_id: str) -> tuple[Path, Path, dict, str]:
     directory, spec, state_path = workflow_paths(workflow_id)
     reject_symlink(directory)
     state = read_state(state_path)
@@ -212,9 +217,84 @@ def check(workflow_id: str) -> None:
     approval = state.get("approval")
     if not isinstance(approval, dict) or not isinstance(approval.get("sha256"), str):
         raise ForgeError("Specification has no persisted human approval.")
-    if digest(spec) != approval["sha256"]:
+    current_hash = digest(spec)
+    if current_hash != approval["sha256"]:
         raise ForgeError("Specification changed after approval; review and approve it again.")
-    print(f"Valid approval for {workflow_id} ({approval['sha256']}).")
+    return directory, spec, state, current_hash
+
+
+def check(workflow_id: str) -> None:
+    _, _, _, current_hash = validated_spec(workflow_id)
+    print(f"Valid approval for {workflow_id} ({current_hash}).")
+
+
+def plan_hash(workflow_id: str) -> str:
+    directory, _, _, current_spec_hash = validated_spec(workflow_id)
+    plan = directory / "plan.md"
+    try:
+        reject_symlink(plan)
+        content = plan.read_bytes()
+    except (OSError, UnicodeError) as exc:
+        raise ForgeError(f"Plan is missing or unreadable: {plan}") from exc
+    if not plan.is_file():
+        raise ForgeError(f"Plan is missing: {plan}")
+    plan_hash_value = hashlib.sha256(content).hexdigest()
+    try:
+        lines = content.decode("utf-8").splitlines()
+    except UnicodeError as exc:
+        raise ForgeError(f"Plan is not valid UTF-8: {plan}") from exc
+    if not lines or lines[0] != "---":
+        raise ForgeError("Plan is missing its source specification digest metadata.")
+    front_matter = []
+    for line in lines[1:]:
+        if line == "---":
+            break
+        front_matter.append(line)
+    else:
+        raise ForgeError("Plan has malformed source specification digest metadata.")
+    source_lines = [line for line in front_matter if line.startswith("source_spec_sha256:")]
+    if len(source_lines) != 1:
+        raise ForgeError("Plan must contain exactly one source specification digest.")
+    source_match = re.fullmatch(r"source_spec_sha256: ([a-f0-9]{64})", source_lines[0])
+    if source_match is None:
+        raise ForgeError("Plan is missing a valid source specification digest.")
+    if source_match.group(1) != current_spec_hash:
+        raise ForgeError("Plan was created from a different specification; revise and review it again.")
+    return plan_hash_value
+
+
+def record_plan_chat_approval(workflow_id: str, expected_hash: str) -> None:
+    if not re.fullmatch(r"[a-f0-9]{64}", expected_hash):
+        raise ForgeError("Expected plan hash must be a SHA-256 digest.")
+    directory, _, state, spec_hash_at_start = validated_spec(workflow_id)
+    current_hash = plan_hash(workflow_id)
+    if current_hash != expected_hash:
+        raise ForgeError("Plan changed during approval; no approval was recorded.")
+    state["plan_approval"] = {
+        "sha256": current_hash,
+        "spec_sha256": spec_hash_at_start,
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if plan_hash(workflow_id) != current_hash:
+        raise ForgeError("Plan changed during approval; no approval was recorded.")
+    _, _, _, current_spec_hash = validated_spec(workflow_id)
+    if current_spec_hash != spec_hash_at_start:
+        raise ForgeError("Specification changed during approval; no plan approval was recorded.")
+    atomic_json(directory / "state.json", state)
+    print(f"Plan approval recorded for {workflow_id}.")
+
+
+def plan_check(workflow_id: str) -> None:
+    _, _, state, current_spec_hash = validated_spec(workflow_id)
+    approval = state.get("plan_approval")
+    if not isinstance(approval, dict) or not isinstance(approval.get("sha256"), str):
+        raise ForgeError("Plan has no persisted human approval.")
+    if approval.get("spec_sha256") != current_spec_hash:
+        raise ForgeError("Plan approval refers to a different specification; review and approve the plan again.")
+    current_plan_hash = plan_hash(workflow_id)
+    if current_plan_hash != approval["sha256"]:
+        raise ForgeError("Plan changed after approval; review and approve it again.")
+    print(f"Valid plan approval for {workflow_id} ({current_plan_hash}).")
 
 
 def main() -> int:
@@ -223,7 +303,7 @@ def main() -> int:
     init_parser = sub.add_parser("init", help="create a workflow record without overwriting")
     init_parser.add_argument("workflow_id")
     init_parser.add_argument("task")
-    for command in ("approve", "check", "spec-hash"):
+    for command in ("approve", "check", "spec-hash", "plan-hash", "plan-check"):
         command_parser = sub.add_parser(command)
         command_parser.add_argument("workflow_id")
     record_parser = sub.add_parser(
@@ -232,6 +312,12 @@ def main() -> int:
     )
     record_parser.add_argument("workflow_id")
     record_parser.add_argument("expected_hash")
+    plan_record_parser = sub.add_parser(
+        "record-plan-chat-approval",
+        help="persist approval after explicit approval of a plan in the Codex conversation",
+    )
+    plan_record_parser.add_argument("workflow_id")
+    plan_record_parser.add_argument("expected_hash")
     prepare_parser = sub.add_parser("prepare-approval", help="install a short project-local approval command")
     prepare_parser.add_argument("workflow_id")
     args = parser.parse_args()
@@ -246,6 +332,12 @@ def main() -> int:
             print(spec_hash(args.workflow_id))
         elif args.command == "record-chat-approval":
             record_chat_approval(args.workflow_id, args.expected_hash)
+        elif args.command == "plan-hash":
+            print(plan_hash(args.workflow_id))
+        elif args.command == "record-plan-chat-approval":
+            record_plan_chat_approval(args.workflow_id, args.expected_hash)
+        elif args.command == "plan-check":
+            plan_check(args.workflow_id)
         else:
             check(args.workflow_id)
     except (ForgeError, OSError) as exc:

@@ -1,7 +1,7 @@
 {
   "name": "forge",
-  "version": "0.1.2",
-  "description": "A spec-driven engineering workflow with persisted human approval.",
+  "version": "0.2.0",
+  "description": "A spec-driven engineering workflow with persisted human approval and planning.",
   "author": {"name": "Forge contributors"},
   "skills": "./skills/"
 }

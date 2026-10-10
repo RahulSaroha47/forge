@@ -1,6 +1,6 @@
 # Forge
 
-Forge is a Codex plugin for a reviewable, spec-driven engineering workflow. Version 0.1 provides the specification stage and a persisted approval record.
+Forge is a Codex plugin for a reviewable, spec-driven engineering workflow. Version 0.2 adds planning from an approved specification with a separate persisted plan approval.
 
 ## Requirements
 
@@ -14,6 +14,8 @@ Invoke the installed skill explicitly as `$forge-spec` and provide a development
 ```text
 $forge-spec Add JWT authentication to the Spring Boot application
 ```
+
+After reviewing and approving the generated spec, invoke `$forge-plan <workflow-id>` to create a repository-grounded implementation plan. Forge verifies spec approval first, shows the full plan for review, and stores plan approval separately against the plan's exact digest.
 
 Codex discovers skills from plugin packages; standalone repo skills use `.agents/skills/<name>/SKILL.md`. Forge uses the plugin package format with `plugin.json`, `skills/forge-spec/SKILL.md`, and a Codex compatibility manifest. See the [Codex skill guide](https://developers.openai.com/codex/skills) and [plugin packaging guide](https://developers.openai.com/plugins/build/plugins).
 
@@ -82,6 +84,12 @@ Any later workflow stage must verify approval before relying on a spec:
 
 Changing the spec invalidates its approval hash. Review the full revision and approve it again in chat, or use the terminal fallback.
 
+Any later stage that consumes a plan must verify both its approval and its source spec with the bundled helper:
+
+```sh
+python3 "<absolute forge-plan skill directory>/../forge-spec/scripts/forge_state.py" plan-check "<workflow-id>"
+```
+
 ## Runtime files
 
 Workflow data lives in the target repository, separate from the installed plugin:
@@ -89,6 +97,7 @@ Workflow data lives in the target repository, separate from the installed plugin
 ```text
 .forge/workflows/<workflow-id>/
 ├── spec.md
+├── plan.md                 # created by $forge-plan
 ├── state.json
 ├── approve
 └── forge_state.py
@@ -98,7 +107,7 @@ State is written atomically with mode `0600` where Unix permissions are supporte
 
 ## Approval boundary
 
-Approval requires an explicit user choice after reviewing the artifact. Forge stores the digest of the exact approved content. The terminal fallback requires an interactive terminal and an exact `APPROVE` confirmation. This is not an operating-system security boundary: a user or process with write access to `.forge/` can alter its state. Codex's general tool permissions remain in force.
+Approval requires an explicit user choice after reviewing the artifact. Forge stores the spec and plan digests separately, so changing either artifact invalidates its approval. The spec terminal fallback requires an interactive terminal and an exact `APPROVE` confirmation. This is not an operating-system security boundary: a user or process with write access to `.forge/` can alter its state. Codex's general tool permissions remain in force.
 
 ## Validation
 
@@ -112,4 +121,4 @@ The automated tests do not exercise Codex plugin loading or generated specificat
 
 ## Current scope
 
-Forge v0.1 supports natural-language tasks, repository inspection, structured specification drafts, explicit approval, and digest validation. Issue tracker fetch, planning, implementation, worktrees, commit controls, and PR creation are later milestones.
+Forge v0.2 supports natural-language tasks, repository inspection, structured specification drafts, explicit spec approval, plan generation from approved specs, explicit plan approval, and digest validation. Issue tracker fetch, implementation, worktrees, commit controls, and PR creation are later milestones.
